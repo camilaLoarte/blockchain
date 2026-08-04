@@ -1,0 +1,7 @@
+# Dependencias del Prototipo DAO Estudiantil (Fase III)
+# Solo la interfaz web (app.py) requiere estas librerías.
+# demo.py y las capas (identity/ledger/offchain/chaincode) usan
+# únicamente la librería estándar de Python.
+
+streamlit==1.52.2
+pandas==2.2.0

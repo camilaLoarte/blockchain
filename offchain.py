@@ -7,7 +7,6 @@ de esto se publica jamás en el ledger, conforme al principio de
 minimización de datos y a la LOPDP descritos en la Fase II.
 """
 import hashlib
-import secrets
 
 
 class AlmacenOffChain:
@@ -23,9 +22,14 @@ class AlmacenOffChain:
         self.propuestas_texto[id_propuesta] = texto
 
     def generar_token_pseudonimo(self, sujeto: str, proceso: str) -> str:
-        """Genera un token pseudónimo distinto por estudiante y proceso electoral."""
+        """Genera un token pseudónimo determinista por (estudiante, proceso).
+
+        Al ser determinista, un mismo estudiante siempre obtiene el mismo
+        token para el mismo proceso, lo que permite al chaincode rechazar
+        votos duplicados. El mapeo token<->estudiante se guarda off-chain.
+        """
         token = hashlib.sha256(
-            f"{sujeto}|{proceso}|{secrets.token_hex(4)}".encode()
+            f"{sujeto}|{proceso}".encode()
         ).hexdigest()[:16]
         self._mapeo_token_estudiante[token] = sujeto
         return token

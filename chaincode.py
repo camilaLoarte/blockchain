@@ -9,7 +9,7 @@ resultados y actualización de estado.
 import hashlib
 import secrets
 
-from identity import FabricCA
+from identity import FabricCA, MSP
 from ledger import Ledger
 from offchain import AlmacenOffChain
 
@@ -53,6 +53,8 @@ class DAOChaincode:
     def crear_propuesta(self, autor: str, titulo: str, texto: str) -> Propuesta:
         if not self.ca.es_valido(autor):
             raise PermissionError(f"{autor} no tiene identidad válida.")
+        if not MSP.autoriza(self.ca._certificados[autor], "crear_propuesta"):
+            raise PermissionError(f"{autor} no tiene permiso para crear propuestas.")
         id_propuesta = secrets.token_hex(4)
         propuesta = Propuesta(id_propuesta, titulo, autor)
         self.propuestas[id_propuesta] = propuesta
@@ -68,7 +70,15 @@ class DAOChaincode:
     # 3. Validación (endoso) ------------------------------------------------------
     def validar(self, id_propuesta: str, endosante: str, rol_endosante: str):
         propuesta = self._obtener(id_propuesta)
-        if rol_endosante not in ("facultad", "consejo"):
+        if not self.ca.es_valido(endosante):
+            raise PermissionError(f"{endosante} no tiene identidad válida.")
+        cert = self.ca._certificados[endosante]
+        if cert.rol != rol_endosante:
+            raise PermissionError(
+                f"El rol declarado ({rol_endosante}) no coincide con el certificado "
+                f"del endosante ({cert.rol})."
+            )
+        if not MSP.autoriza(cert, "endosar"):
             raise PermissionError("Solo facultades/Consejo pueden endosar.")
         propuesta.endosos.add(endosante)
         if len(propuesta.endosos) >= self.POLITICA_ENDOSO_MINIMA:
@@ -85,6 +95,12 @@ class DAOChaincode:
     # 4. Apertura de votación -------------------------------------------------------
     def abrir_votacion(self, id_propuesta: str, quorum: int, admin: str):
         propuesta = self._obtener(id_propuesta)
+        if not self.ca.es_valido(admin):
+            raise PermissionError(f"{admin} no tiene identidad válida.")
+        if not MSP.autoriza(self.ca._certificados[admin], "abrir_votacion"):
+            raise PermissionError(
+                "Solo facultades o el Consejo pueden abrir la votación (MSP)."
+            )
         if propuesta.estado != "validada":
             raise ValueError("La propuesta debe estar validada antes de abrir votación.")
         propuesta.estado = "en_votacion"
@@ -104,6 +120,8 @@ class DAOChaincode:
             raise ValueError("La propuesta no está en periodo de votación.")
         if not self.ca.es_valido(votante):
             raise PermissionError(f"{votante} no tiene identidad válida.")
+        if not MSP.autoriza(self.ca._certificados[votante], "votar"):
+            raise PermissionError("Solo estudiantes con rol 'estudiante' pueden votar.")
         token = self.offchain.generar_token_pseudonimo(votante, id_propuesta)
         if token in propuesta.tokens_usados:
             raise PermissionError("Este token ya emitió su voto.")
@@ -151,6 +169,12 @@ class DAOChaincode:
     # 8. Actualización de estado -----------------------------------------------------
     def actualizar_estado(self, id_propuesta: str, nuevo_estado: str, autoridad: str):
         propuesta = self._obtener(id_propuesta)
+        if not self.ca.es_valido(autoridad):
+            raise PermissionError(f"{autoridad} no tiene identidad válida.")
+        if not MSP.autoriza(self.ca._certificados[autoridad], "actualizar_estado"):
+            raise PermissionError(
+                "Solo el Consejo Universitario puede actualizar el estado (MSP)."
+            )
         propuesta.estado = nuevo_estado
         self.ledger.registrar("ACTUALIZACION_ESTADO", {
             "id": id_propuesta,

@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import hashlib
-import json
 
 # Configuración de la página
 st.set_page_config(
@@ -71,19 +69,79 @@ st.markdown("""
     [data-baseweb="select"] * {
         color: #0f172a !important;
     }
-    [data-baseweb="popover"] [role="option"] * {
+    [data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+    }
+    /* Menú desplegable completo en claro */
+    [data-baseweb="popover"] [data-baseweb="menu"],
+    [data-baseweb="popover"] [data-baseweb="popover"],
+    ul[data-testid="stSelectboxVirtualDropdown"] {
+        background-color: #ffffff !important;
+        border: 1px solid #c7d2fe !important;
+        border-radius: 0.6rem !important;
+    }
+    [data-baseweb="popover"] [role="option"],
+    li[data-testid="stSelectboxVirtualDropdownOption"] {
+        background-color: #ffffff !important;
         color: #0f172a !important;
     }
-    [data-baseweb="popover"] [role="option"]:hover {
+    [data-baseweb="popover"] [role="option"] *,
+    li[data-testid="stSelectboxVirtualDropdownOption"] * {
+        color: #0f172a !important;
+    }
+    [data-baseweb="popover"] [role="option"]:hover,
+    li[data-testid="stSelectboxVirtualDropdownOption"]:hover {
         background-color: #eef3ff !important;
     }
-    /* Radio buttons */
+    [data-baseweb="popover"] [role="option"][aria-selected="true"],
+    li[data-testid="stSelectboxVirtualDropdownOption"]:focus {
+        background-color: #dfe8ff !important;
+    }
+    /* Radio buttons: opciones en claro */
     [data-testid="stRadio"] * {
         color: #1e293b !important;
+    }
+    [data-testid="stRadio"] label {
+        background-color: transparent !important;
+    }
+    /* Number input: botones +/- en claro */
+    [data-testid="stNumberInput"] button {
+        background-color: #eef3ff !important;
+        color: #1e293b !important;
+        border: 1px solid #c7d2fe !important;
+    }
+    [data-testid="stNumberInput"] button:hover {
+        background-color: #dce6ff !important;
     }
     /* Metricas */
     [data-testid="stMetricLabel"] * {
         color: #334155 !important;
+    }
+    [data-testid="stMetric"] .st-ae,
+    [data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        color: #334155 !important;
+    }
+    /* Captions / textos pequeños */
+    .stCaption, [data-testid="stCaptionContainer"] {
+        color: #5b6b8c !important;
+    }
+    /* Dataframe: tema claro */
+    [data-testid="stDataFrame"] {
+        background-color: #ffffff !important;
+        border-radius: 0.6rem !important;
+        border: 1px solid #c7d2fe !important;
+    }
+    [data-testid="stDataFrame"] div[role="row"],
+    [data-testid="stDataFrame"] thead th,
+    [data-testid="stDataFrame"] tbody td {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+    }
+    /* Título del menú hamburguesa y demás tooltips */
+    [data-testid="stTooltip"],
+    [data-testid="stTooltip"] * {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
     }
     /* Expander */
     [data-testid="stExpander"] * {
@@ -363,102 +421,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Intentar importar los módulos existentes
-try:
-    from identity import IdentityManager
-except ImportError:
-    class IdentityManager:
-        def __init__(self): self.identities = {}
-        def register_identity(self, estudiante_id, facultad):
-            self.identities[estudiante_id] = facultad
-            return f"CERT-X509-{estudiante_id}"
-        def get_registered_identities(self): return self.identities
+# ---- BACKEND REAL: importar las capas de la Fase II ----
+from identity import FabricCA, MSP
+from offchain import AlmacenOffChain
+from ledger import Ledger
+from chaincode import DAOChaincode, Propuesta
 
-try:
-    from offchain import OffChainDB
-except ImportError:
-    class OffChainDB:
-        def __init__(self):
-            self.proposals = {}
-            self.tokens = {}
-        def get_or_create_token(self, estudiante_id, eleccion):
-            token = hashlib.sha256(f"{estudiante_id}_{eleccion}".encode()).hexdigest()
-            self.tokens[estudiante_id] = token[:16]
-            return token[:16]
-        def store_proposal_doc(self, prop_id, titulo, contenido):
-            hash_doc = hashlib.sha256(contenido.encode()).hexdigest()
-            self.proposals[prop_id] = {"titulo": titulo, "contenido": contenido, "hash": hash_doc}
-            return hash_doc
-        def get_proposal_doc(self, prop_id): return self.proposals.get(prop_id, {})
-        def get_debug_data(self): return self.proposals
-
-try:
-    from ledger import Ledger
-except ImportError:
-    class Ledger:
-        def __init__(self):
-            self.chain = []
-            self.create_genesis()
-        def create_genesis(self):
-            self.chain.append({"index": 0, "hash": "0000000000", "txs": ["Bloque Génesis DAO UIDE"]})
-        def add_block(self, tx):
-            idx = len(self.chain)
-            prev_hash = self.chain[-1].get("hash", "0") if isinstance(self.chain[-1], dict) else getattr(self.chain[-1], "hash", "0")
-            block_hash = hashlib.sha256(f"{idx}{tx}{prev_hash}".encode()).hexdigest()
-            self.chain.append({"index": idx, "hash": block_hash, "previous_hash": prev_hash, "txs": [tx]})
-
-try:
-    from chaincode import Chaincode
-except ImportError:
-    class Chaincode:
-        def __init__(self, ledger):
-            self.ledger = ledger
-            self.state = {}
-            self.votos = set()
-        def invoke(self, fn, args):
-            if fn == "CrearPropuesta":
-                p_id = args["id"]
-                if p_id in self.state:
-                    return {"error": "La propuesta ya existe"}
-                self.state[p_id] = {
-                    "hash_doc": args["hash_doc"],
-                    "votos_favor": 0,
-                    "votos_contra": 0,
-                    "quorum": args["quorum"],
-                    "estado": "ABIERTA"
-                }
-                if hasattr(self.ledger, "add_block"):
-                    self.ledger.add_block({"type": "CREAR_PROPUESTA", "id": p_id})
-                return {"success": True}
-            elif fn == "EmitirVoto":
-                p_id = args["propuesta_id"]
-                token = args["token_votante"]
-                clave = f"{p_id}_{token}"
-                if clave in self.votos:
-                    return {"error": "Este token ya ha registrado un voto para esta propuesta."}
-                if p_id not in self.state or self.state[p_id]["estado"] != "ABIERTA":
-                    return {"error": "La propuesta no está abierta para votación."}
-                
-                if args["opcion"] == "FAVOR":
-                    self.state[p_id]["votos_favor"] += 1
-                else:
-                    self.state[p_id]["votos_contra"] += 1
-                
-                self.votos.add(clave)
-                if hasattr(self.ledger, "add_block"):
-                    self.ledger.add_block({"type": "EMITIR_VOTO", "id": p_id, "token": token})
-                
-                total = self.state[p_id]["votos_favor"] + self.state[p_id]["votos_contra"]
-                if total >= self.state[p_id]["quorum"]:
-                    self.state[p_id]["estado"] = "APROBADA" if self.state[p_id]["votos_favor"] > self.state[p_id]["votos_contra"] else "RECHAZADA"
-                return {"success": True}
-        def get_all_proposals(self):
-            return self.state
 
 # Función auxiliar para extraer bloques del Ledger independientemente de su estructura
 def obtener_bloques_ledger(ledger_obj):
     if hasattr(ledger_obj, 'get_blocks') and callable(getattr(ledger_obj, 'get_blocks')):
         return ledger_obj.get_blocks()
+    elif hasattr(ledger_obj, 'cadena'):
+        return ledger_obj.cadena
     elif hasattr(ledger_obj, 'chain'):
         return ledger_obj.chain
     elif hasattr(ledger_obj, 'blocks'):
@@ -467,15 +442,18 @@ def obtener_bloques_ledger(ledger_obj):
         return ledger_obj.ledger
     return []
 
-# Inicializar componentes en el estado de la sesión
-if 'identity_mgr' not in st.session_state:
-    st.session_state.identity_mgr = IdentityManager()
-if 'offchain_db' not in st.session_state:
-    st.session_state.offchain_db = OffChainDB()
-if 'ledger' not in st.session_state:
-    st.session_state.ledger = Ledger()
-if 'chaincode' not in st.session_state:
-    st.session_state.chaincode = Chaincode(st.session_state.ledger)
+
+# Estado de la sesión: una sola instancia de la DAO completa (CA + Ledger + OffChain + Chaincode)
+if 'dao' not in st.session_state:
+    st.session_state.dao = DAOChaincode()
+if 'usuario' not in st.session_state:
+    st.session_state.usuario = None
+if 'rol_usuario' not in st.session_state:
+    st.session_state.rol_usuario = "estudiante"
+if 'cert_actual' not in st.session_state:
+    st.session_state.cert_actual = None
+
+dao = st.session_state.dao
 
 st.markdown("""
 <div class="hero-header">
@@ -488,25 +466,48 @@ st.markdown("""
 # BARRA LATERAL
 st.sidebar.markdown('<div class="sidebar-brand">🪪 Identidad DAO · UIDE</div>', unsafe_allow_html=True)
 
-st.sidebar.markdown('<div class="sidebar-label">🔐 Autenticación e Identidad (Fabric CA)</div>', unsafe_allow_html=True)
-estudiante_id = st.sidebar.text_input("Matrícula Estudiantil", value="2026-IT-001")
+st.sidebar.markdown('<div class="sidebar-label">🔐 Registro de Identidad (Fabric CA)</div>', unsafe_allow_html=True)
+estudiante_id = st.sidebar.text_input("Usuario / Matrícula", value="2026-IT-001")
+rol_sel = st.sidebar.selectbox("Rol", ["estudiante", "facultad", "consejo"])
 facultad = st.sidebar.selectbox("Organización / Facultad", ["Ingeniería en TIs", "Administración", "Derecho", "Consejo Universitario"])
 
-cert = st.session_state.identity_mgr.register_identity(estudiante_id, facultad) if hasattr(st.session_state.identity_mgr, 'register_identity') else "CERT-X509"
-token_pseudonimo = st.session_state.offchain_db.get_or_create_token(estudiante_id, "ELECCION_2026") if hasattr(st.session_state.offchain_db, 'get_or_create_token') else "TOKEN-12345"
+usuario = st.session_state.usuario
+rol_usuario = st.session_state.rol_usuario
+cert_actual = st.session_state.cert_actual
 
-st.sidebar.success("✅ Autenticación SSO Verificada")
-st.sidebar.markdown('<div class="sidebar-label">Credenciales MSP</div>', unsafe_allow_html=True)
-st.sidebar.code(f"Org: {facultad}\nToken Pseudónimo:\n{token_pseudonimo}", language="yaml")
+if st.sidebar.button("🪪 Emitir Certificado", use_container_width=True):
+    try:
+        cert = dao.registro_identidad(estudiante_id, rol_sel, facultad)
+        st.session_state.usuario = estudiante_id
+        st.session_state.rol_usuario = rol_sel
+        st.session_state.cert_actual = cert
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"❌ {type(e).__name__}: {e}")
+
+if cert_actual is not None:
+    st.sidebar.success(f"✅ Certificado válido para **{usuario}**")
+    st.sidebar.markdown('<div class="sidebar-label">Credenciales MSP</div>', unsafe_allow_html=True)
+    st.sidebar.code(
+        f"Usuario: {usuario}\n"
+        f"Rol: {rol_usuario}\n"
+        f"Serie: {cert_actual.numero_serie}\n"
+        f"Huella: {cert_actual.huella[:20]}...",
+        language="yaml",
+    )
+    permisos = MSP.PERMISOS.get(rol_usuario, set())
+    st.sidebar.caption("Permisos: " + ", ".join(sorted(permisos)))
+else:
+    st.sidebar.info("ℹ️ Emite tu certificado para operar en la DAO.")
 
 # ---- MÉTRICAS RESUMEN ----
-_props_totales = len(st.session_state.chaincode.get_all_proposals()) if hasattr(st.session_state.chaincode, 'get_all_proposals') else 0
-_bloques_totales = len(obtener_bloques_ledger(st.session_state.ledger)) - 1 if obtener_bloques_ledger(st.session_state.ledger) else 0
+_bloques_totales = max(len(obtener_bloques_ledger(dao.ledger)) - 1, 0)
+_integridad = dao.ledger.verificar_integridad()
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("🗳️ Propuestas Activas", _props_totales)
-m2.metric("📦 Bloques en el Ledger", max(_bloques_totales, 0))
-m3.metric("🔐 Identidades MSP", len(st.session_state.identity_mgr.get_registered_identities()) if hasattr(st.session_state.identity_mgr, 'get_registered_identities') else 0)
-m4.metric("🆔 Token Pseudónimo", token_pseudonimo[:8] + "...")
+m1.metric("🗳️ Propuestas Creadas", len(dao.propuestas))
+m2.metric("📦 Bloques en el Ledger", _bloques_totales)
+m3.metric("🔐 Identidades Emitidas", len(dao.ca._certificados))
+m4.metric("🔎 Integridad del Ledger", "✅ ÍNTEGRO" if _integridad else "❌ ALTERADO")
 
 st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
@@ -516,92 +517,148 @@ tab1, tab2, tab3 = st.tabs(["📝 Crear y Votar Propuestas", "📦 Explorador On
 with tab1:
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown('<div class="st-card"><h3>📝 Crear Propuesta Estudiantil</h3><div class="card-sub">Registra una iniciativa y envíala a votación de la comunidad</div>', unsafe_allow_html=True)
-        prop_id = st.text_input("ID de Propuesta", value="PROP-2026-01")
+        st.markdown('<div class="st-card"><h3>📝 Crear Propuesta</h3><div class="card-sub">Solo usuarios con identidad válida (permiso: crear_propuesta)</div>', unsafe_allow_html=True)
         titulo = st.text_input("Título de la Iniciativa", value="Fondo para Proyectos de Robótica")
         contenido = st.text_area("Descripción Completa", value="Asignación presupuestaria para compra de kits y competencias.")
-        quorum = st.number_input("Quórum Mínimo de Votos", min_value=1, value=3)
 
         if st.button("🚀 Enviar Propuesta a la DAO", use_container_width=True):
-            hash_doc = st.session_state.offchain_db.store_proposal_doc(prop_id, titulo, contenido) if hasattr(st.session_state.offchain_db, 'store_proposal_doc') else "hash_123"
-            res = st.session_state.chaincode.invoke("CrearPropuesta", {
-                "id": prop_id,
-                "hash_doc": hash_doc,
-                "quorum": quorum,
-                "org": facultad
-            })
-            if isinstance(res, dict) and "error" in res:
-                st.error(res["error"])
+            if cert_actual is None:
+                st.error("❌ Emite tu certificado en la barra lateral primero.")
             else:
-                st.success(f"✅ Propuesta {prop_id} registrada en el ledger on-chain!")
-                st.caption(f"🔗 Hash de auditoría: `{str(hash_doc)[:20]}...`")
+                try:
+                    propuesta = dao.crear_propuesta(usuario, titulo, contenido)
+                    st.success(f"✅ Propuesta registrada: **{propuesta.id}**")
+                    st.caption(f"🔗 Estado inicial: `{propuesta.estado}` · Autor hash: `{dao._hash_corto(usuario)}`")
+                except Exception as e:
+                    st.error(f"❌ {type(e).__name__}: {e}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
-        st.markdown('<div class="st-card"><h3>🗳️ Emitir Voto Pseudónimo</h3><div class="card-sub">Tu identidad queda oculta tras un token criptográfico</div>', unsafe_allow_html=True)
-        propuestas = st.session_state.chaincode.get_all_proposals() if hasattr(st.session_state.chaincode, 'get_all_proposals') else {}
-        if not propuestas:
-            st.info("ℹ️ No hay propuestas activas en este momento.")
+        st.markdown('<div class="st-card"><h3>🗳️ Gobernanza de Propuestas</h3><div class="card-sub">Endoso 2/3 → Apertura → Votación → Cierre y conteo</div>', unsafe_allow_html=True)
+        ids_prop = list(dao.propuestas.keys())
+        if not ids_prop:
+            st.info("ℹ️ Aún no hay propuestas. Crea la primera.")
         else:
-            prop_id_sel = st.selectbox("Seleccionar Propuesta para Votar", list(propuestas.keys()))
-            datos_p = propuestas[prop_id_sel]
-            doc_offchain = st.session_state.offchain_db.get_proposal_doc(prop_id_sel) if hasattr(st.session_state.offchain_db, 'get_proposal_doc') else {}
+            prop_id_sel = st.selectbox("Seleccionar Propuesta", ids_prop)
+            prop = dao.propuestas[prop_id_sel]
 
-            estado = datos_p.get('estado', 'N/A').lower()
-            estado_clase = 'abierta' if estado == 'abierta' else ('aprobada' if estado == 'aprobada' else 'rechazada')
-            st.markdown(f"<span class='status-chip {estado_clase}'>{datos_p.get('estado', 'N/A')}</span>", unsafe_allow_html=True)
+            estado_clase = {
+                "borrador": "abierta",
+                "validada": "aprobada",
+                "en_votacion": "abierta",
+                "cerrada": "rechazada",
+            }.get(prop.estado, "rechazada")
+            st.markdown(f"<span class='status-chip {estado_clase}'>Estado: {prop.estado.upper()}</span>", unsafe_allow_html=True)
 
-            st.write(f"**📌 Título:** {doc_offchain.get('titulo', '')}")
-            st.write(f"**⚖️ Quórum:** {datos_p.get('quorum', 'N/A')} votos requeridos")
-            st.write(f"**🔑 Hash de Auditoría (Doc):** `{str(datos_p.get('hash_doc', ''))[:24]}...`")
+            st.write(f"**📌 Título:** {prop.titulo}")
+            st.write(f"**👤 Autor:** {prop.autor}")
+            st.write(f"**🤝 Endosos:** {len(prop.endosos)}/3  ·  **⚖️ Quórum:** {prop.quorum if prop.quorum else 'N/D'}")
 
-            c_fav, c_con = st.columns(2)
-            c_fav.metric("✅ Favor", datos_p.get('votos_favor', 0))
-            c_con.metric("❌ Contra", datos_p.get('votos_contra', 0))
+            c_fav, c_con, c_abs = st.columns(3)
+            c_fav.metric("✅ A favor", prop.votos["a_favor"])
+            c_con.metric("❌ En contra", prop.votos["en_contra"])
+            c_abs.metric("⬜ Abstención", prop.votos["abstencion"])
 
-            opcion = st.radio("Selecciona tu voto:", ["FAVOR", "CONTRA"], horizontal=True)
-
-            if st.button("✍️ Firmar y Emitir Transacción", use_container_width=True):
-                res_voto = st.session_state.chaincode.invoke("EmitirVoto", {
-                    "propuesta_id": prop_id_sel,
-                    "token_votante": token_pseudonimo,
-                    "opcion": opcion
-                })
-
-                if isinstance(res_voto, dict) and "error" in res_voto:
-                    st.error(f"❌ Transacción Rechazada: {res_voto['error']}")
+            # --- Acciones según el estado de la propuesta ---
+            if prop.estado == "borrador":
+                if rol_usuario in ("facultad", "consejo"):
+                    if st.button("🤝 Endosar / Validar", use_container_width=True):
+                        try:
+                            dao.validar(prop_id_sel, usuario, rol_usuario)
+                            st.success(f"✅ Endoso registrado ({len(prop.endosos)} endosos).")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ {type(e).__name__}: {e}")
                 else:
-                    st.success("✅ Voto endosado y registrado inmutablemente en el bloque.")
+                    st.warning("🔒 Solo facultad o consejo puede endosar (política 2 de 3).")
+
+            elif prop.estado == "validada":
+                quorum_input = st.number_input("Quórum para abrir votación", min_value=1, value=2)
+                if rol_usuario == "consejo":
+                    if st.button("🗳️ Abrir Votación", use_container_width=True):
+                        try:
+                            dao.abrir_votacion(prop_id_sel, int(quorum_input), usuario)
+                            st.success("✅ Votación abierta.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ {type(e).__name__}: {e}")
+                else:
+                    st.warning("🔒 Solo el Consejo puede abrir la votación.")
+
+            elif prop.estado == "en_votacion":
+                if rol_usuario == "estudiante":
+                    opcion = st.radio("Selecciona tu voto:", ["a_favor", "en_contra", "abstencion"], horizontal=True)
+                    if st.button("✍️ Firmar y Emitir Voto", use_container_width=True):
+                        try:
+                            token = dao.emitir_voto(prop_id_sel, usuario, opcion)
+                            st.success(f"✅ Voto registrado con token pseudónimo `{token}`.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ {type(e).__name__}: {e}")
+                else:
+                    st.warning("🔒 Solo estudiantes pueden votar.")
+                    if rol_usuario in ("facultad", "consejo"):
+                        if st.button("🏁 Cerrar y Contar", use_container_width=True):
+                            try:
+                                resultado = dao.cerrar_y_contar(prop_id_sel)
+                                st.success(f"✅ Resultado: **{resultado}**")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ {type(e).__name__}: {e}")
+
+            elif prop.estado == "cerrada":
+                total_votos = sum(prop.votos.values())
+                if prop.quorum and total_votos < prop.quorum:
+                    resultado = "NO_ALCANZA_QUORUM"
+                elif prop.votos["a_favor"] > prop.votos["en_contra"]:
+                    resultado = "APROBADA"
+                else:
+                    resultado = "RECHAZADA"
+                resultado_clase = "aprobada" if resultado == "APROBADA" else "rechazada"
+                st.markdown(f"<span class='status-chip {resultado_clase}'>🏁 {resultado}</span>", unsafe_allow_html=True)
+                st.write(f"**Total de votos:** {total_votos} (quórum requerido: {prop.quorum})")
         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
-    st.markdown('<div class="st-card"><h3>📦 Estado del Ledger Distribuido (World State)</h3><div class="card-sub">Vista global del estado actual de todas las propuestas en la red</div>', unsafe_allow_html=True)
-    propuestas_dict = st.session_state.chaincode.get_all_proposals() if hasattr(st.session_state.chaincode, 'get_all_proposals') else {}
-    if propuestas_dict:
-        df_prop = pd.DataFrame.from_dict(propuestas_dict, orient='index')
-        st.dataframe(df_prop, use_container_width=True)
+    st.markdown('<div class="st-card"><h3>📦 World State (Estado Actual)</h3><div class="card-sub">Equivalente conceptual a CouchDB: último estado de cada entidad on-chain</div>', unsafe_allow_html=True)
+    world_state = dao.ledger.world_state
+    if world_state:
+        df_ws = pd.DataFrame.from_dict(world_state, orient='index')
+        st.dataframe(df_ws, use_container_width=True)
     else:
-        st.info("ℹ️ Aún no hay propuestas registradas.")
+        st.info("ℹ️ Aún no hay transacciones en el world state.")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="st-card"><h3>🔗 Cadena de Bloques Inmutable (Raft Orderer)</h3><div class="card-sub">Cada transacción queda sellada criptográficamente en un bloque</div>', unsafe_allow_html=True)
-    bloques = obtener_bloques_ledger(st.session_state.ledger)
-    
+    st.markdown('<div class="st-card"><h3>🔗 Cadena de Bloques Inmutable (Raft Orderer)</h3><div class="card-sub">Cada transacción queda sellada criptográficamente en un bloque enlazado</div>', unsafe_allow_html=True)
+    bloques = obtener_bloques_ledger(dao.ledger)
+
     if not bloques:
         st.info("ℹ️ No hay bloques registrados en el ledger aún.")
     else:
+        integridad = dao.ledger.verificar_integridad()
+        st.metric("🔎 Integridad de la cadena", "✅ ÍNTEGRA" if integridad else "❌ ALTERADA")
+        st.caption("El hash de cada bloque depende del anterior: cualquier alteración se detecta al verificar.")
+
         for idx, block in enumerate(reversed(bloques)):
-            b_hash = block.get('hash', 'N/A') if isinstance(block, dict) else getattr(block, 'hash', 'N/A')
+            b_hash = getattr(block, 'hash', 'N/A')
+            b_prev = getattr(block, 'hash_anterior', '0')
+            b_indice = getattr(block, 'indice', len(bloques) - 1 - idx)
             st.markdown(f"""
             <div class="block-card">
-                <div class="block-title">⛓️ Bloque #{len(bloques) - 1 - idx}</div>
+                <div class="block-title">⛓️ Bloque #{b_indice}</div>
                 <div class="block-hash">Hash: {str(b_hash)}</div>
+                <div class="block-hash">Hash anterior: {str(b_prev)}</div>
+                <div class="block-hash">Transacciones: {len(getattr(block, 'transacciones', []))}</div>
             </div>
             """, unsafe_allow_html=True)
-            with st.expander(f"🔍 Ver detalle del bloque #{len(bloques) - 1 - idx}"):
-                st.code(str(block), language="json")
+            with st.expander(f"🔍 Ver detalle del bloque #{b_indice}"):
+                st.json([{
+                    "tipo": tx.get("tipo"),
+                    "datos": {k: v for k, v in tx.items() if k not in ("tipo", "timestamp")},
+                    "timestamp": tx.get("timestamp"),
+                } for tx in getattr(block, 'transacciones', [])])
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab3:
@@ -609,12 +666,24 @@ with tab3:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**🗄️ Almacenamiento Off-Chain (Privado - LOPDP):**")
-        if hasattr(st.session_state.offchain_db, 'get_debug_data'):
-            st.json(st.session_state.offchain_db.get_debug_data())
+        st.json({
+            "perfiles_personales": dao.offchain.datos_personales,
+            "textos_propuestas": {k: v[:80] + ("..." if len(v) > 80 else "") for k, v in dao.offchain.propuestas_texto.items()},
+            "tokens_pseudonimos_emitidos": len(dao.offchain._mapeo_token_estudiante),
+        })
+        st.caption("El mapeo token ↔ estudiante NO se publica en el ledger (minimización de datos).")
     with c2:
         st.markdown("**🔐 Control de Accesos MSP / Fabric CA:**")
-        if hasattr(st.session_state.identity_mgr, 'get_registered_identities'):
-            st.json(st.session_state.identity_mgr.get_registered_identities())
+        st.json({
+            sujeto: {
+                "rol": cert.rol,
+                "facultad": cert.facultad,
+                "serie": cert.numero_serie,
+                "huella": cert.huella[:16] + "...",
+            }
+            for sujeto, cert in dao.ca._certificados.items()
+        })
+        st.caption(f"Política de endoso: se requieren {DAOChaincode.POLITICA_ENDOSO_MINIMA} de 3 organizaciones.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("""
