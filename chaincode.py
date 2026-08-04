@@ -183,6 +183,28 @@ class DAOChaincode:
         })
         print(f"[OK] Estado de {id_propuesta} actualizado a '{nuevo_estado}' por {autoridad}")
 
+    # 3b. Rechazo de propuesta (antes de votación) -------------------------------------
+    def rechazar(self, id_propuesta: str, autoridad: str, motivo: str = "Sin justificación"):
+        """Permite a facultad/consejo rechazar una propuesta antes de abrir la votación."""
+        propuesta = self._obtener(id_propuesta)
+        if not self.ca.es_valido(autoridad):
+            raise PermissionError(f"{autoridad} no tiene identidad válida.")
+        cert = self.ca._certificados[autoridad]
+        if not MSP.autoriza(cert, "rechazar"):
+            raise PermissionError("Solo facultad o el Consejo pueden rechazar propuestas.")
+        if propuesta.estado not in ("borrador", "validada"):
+            raise ValueError("Solo se pueden rechazar propuestas en borrador o validadas.")
+        propuesta.estado = "rechazada"
+        self.offchain.guardar_texto_propuesta(id_propuesta, propuesta.titulo + f"\n[RECHAZADA por {autoridad}]: {motivo}")  # noqa
+        self.ledger.registrar("RECHAZO_PROPUESTA", {
+            "id": id_propuesta,
+            "autoridad": autoridad,
+            "rol": cert.rol,
+            "motivo": motivo,
+            "estado": propuesta.estado,
+        })
+        print(f"[OK] Propuesta {id_propuesta} RECHAZADA por {autoridad} ({motivo})")
+
     # Utilidades -----------------------------------------------------------------------
     def _obtener(self, id_propuesta: str) -> Propuesta:
         if id_propuesta not in self.propuestas:

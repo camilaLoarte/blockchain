@@ -66,8 +66,8 @@ class MSP:
 
     PERMISOS = {
         "estudiante": {"crear_propuesta", "votar"},
-        "facultad": {"endosar", "abrir_votacion"},
-        "consejo": {"endosar", "abrir_votacion", "actualizar_estado"},
+        "facultad": {"endosar", "abrir_votacion", "rechazar"},
+        "consejo": {"endosar", "abrir_votacion", "actualizar_estado", "rechazar"},
     }
 
     @classmethod

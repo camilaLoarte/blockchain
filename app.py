@@ -542,17 +542,36 @@ with tab1:
             prop_id_sel = st.selectbox("Seleccionar Propuesta", ids_prop)
             prop = dao.propuestas[prop_id_sel]
 
+            # --- Indicador visual del ciclo de vida ---
+            pasos = {"borrador": 0, "validada": 1, "en_votacion": 2, "cerrada": 3}
+            paso_actual = pasos.get(prop.estado, 0)
+            nombres = ["1. Borrador", "2. Validada", "3. En votación", "4. Cerrada"]
+            cols_pasos = st.columns(4)
+            for i, (col, nombre) in enumerate(zip(cols_pasos, nombres)):
+                if i < paso_actual:
+                    col.markdown(f"<div style='text-align:center;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:8px;padding:6px 4px;font-size:0.72rem;font-weight:700;'>✅ {nombre}</div>", unsafe_allow_html=True)
+                elif i == paso_actual:
+                    col.markdown(f"<div style='text-align:center;background:#1f3a93;color:#ffffff;border-radius:8px;padding:6px 4px;font-size:0.72rem;font-weight:800;'>⬤ {nombre}</div>", unsafe_allow_html=True)
+                else:
+                    col.markdown(f"<div style='text-align:center;background:#eef3ff;color:#64748b;border:1px solid #c7d2fe;border-radius:8px;padding:6px 4px;font-size:0.72rem;font-weight:700;'>○ {nombre}</div>", unsafe_allow_html=True)
+
             estado_clase = {
                 "borrador": "abierta",
                 "validada": "aprobada",
                 "en_votacion": "abierta",
                 "cerrada": "rechazada",
+                "rechazada": "rechazada",
             }.get(prop.estado, "rechazada")
             st.markdown(f"<span class='status-chip {estado_clase}'>Estado: {prop.estado.upper()}</span>", unsafe_allow_html=True)
 
             st.write(f"**📌 Título:** {prop.titulo}")
             st.write(f"**👤 Autor:** {prop.autor}")
-            st.write(f"**🤝 Endosos:** {len(prop.endosos)}/3  ·  **⚖️ Quórum:** {prop.quorum if prop.quorum else 'N/D'}")
+
+            endosos_faltantes = max(DAOChaincode.POLITICA_ENDOSO_MINIMA - len(prop.endosos), 0)
+            st.write(f"**🤝 Endosos:** {len(prop.endosos)}/{DAOChaincode.POLITICA_ENDOSO_MINIMA} necesarios  ·  **⚖️ Quórum:** {prop.quorum if prop.quorum else 'N/D'}")
+            if prop.estado == "borrador":
+                if endosos_faltantes > 0:
+                    st.caption(f"👉 Faltan **{endosos_faltantes}** endoso(s) para abrir la votación.")
 
             c_fav, c_con, c_abs = st.columns(3)
             c_fav.metric("✅ A favor", prop.votos["a_favor"])
@@ -562,31 +581,52 @@ with tab1:
             # --- Acciones según el estado de la propuesta ---
             if prop.estado == "borrador":
                 if rol_usuario in ("facultad", "consejo"):
-                    if st.button("🤝 Endosar / Validar", use_container_width=True):
+                    st.info(f"👈 Ahora endosa la propuesta como **{usuario}** ({rol_usuario}), o recházala.")
+                    col_end, col_rec = st.columns(2)
+                    if col_end.button("🤝 Endosar / Validar", use_container_width=True):
                         try:
                             dao.validar(prop_id_sel, usuario, rol_usuario)
-                            st.success(f"✅ Endoso registrado ({len(prop.endosos)} endosos).")
+                            st.success(f"✅ Endoso registrado ({len(prop.endosos)}/{DAOChaincode.POLITICA_ENDOSO_MINIMA}).")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ {type(e).__name__}: {e}")
+                    motivo_rechazo = st.text_input("Motivo del rechazo (opcional)", key=f"motivo_{prop_id_sel}")
+                    if col_rec.button("❌ Rechazar Propuesta", use_container_width=True):
+                        try:
+                            dao.rechazar(prop_id_sel, usuario, motivo_rechazo or "Sin justificación")
+                            st.error(f"🚫 Propuesta {prop_id_sel} rechazada por {usuario}.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ {type(e).__name__}: {e}")
                 else:
-                    st.warning("🔒 Solo facultad o consejo puede endosar (política 2 de 3).")
+                    st.warning(f"🔒 Tu rol es **estudiante**. Cambia a rol `facultad` o `consejo` en la barra lateral y emite un nuevo certificado para endosar.")
 
             elif prop.estado == "validada":
-                quorum_input = st.number_input("Quórum para abrir votación", min_value=1, value=2)
                 if rol_usuario == "consejo":
-                    if st.button("🗳️ Abrir Votación", use_container_width=True):
+                    st.info("👈 La propuesta ya está validada. Ábrela a votación como Consejo, o recházala.")
+                    quorum_input = st.number_input("Quórum para abrir votación", min_value=1, value=2)
+                    col_ab, col_rec2 = st.columns(2)
+                    if col_ab.button("🗳️ Abrir Votación", use_container_width=True):
                         try:
                             dao.abrir_votacion(prop_id_sel, int(quorum_input), usuario)
                             st.success("✅ Votación abierta.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ {type(e).__name__}: {e}")
+                    motivo_rechazo2 = st.text_input("Motivo del rechazo (opcional)", key=f"motivo2_{prop_id_sel}")
+                    if col_rec2.button("❌ Rechazar Propuesta", use_container_width=True):
+                        try:
+                            dao.rechazar(prop_id_sel, usuario, motivo_rechazo2 or "Sin justificación")
+                            st.error(f"🚫 Propuesta {prop_id_sel} rechazada por {usuario}.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ {type(e).__name__}: {e}")
                 else:
-                    st.warning("🔒 Solo el Consejo puede abrir la votación.")
+                    st.warning("🔒 La propuesta está validada. Cambia a rol `consejo` en la barra lateral para abrir la votación.")
 
             elif prop.estado == "en_votacion":
                 if rol_usuario == "estudiante":
+                    st.info("👈 La votación está abierta. Emite tu voto como estudiante.")
                     opcion = st.radio("Selecciona tu voto:", ["a_favor", "en_contra", "abstencion"], horizontal=True)
                     if st.button("✍️ Firmar y Emitir Voto", use_container_width=True):
                         try:
@@ -596,8 +636,9 @@ with tab1:
                         except Exception as e:
                             st.error(f"❌ {type(e).__name__}: {e}")
                 else:
-                    st.warning("🔒 Solo estudiantes pueden votar.")
+                    st.warning("🔒 La votación está abierta: cambia a rol `estudiante` para votar.")
                     if rol_usuario in ("facultad", "consejo"):
+                        st.info("👈 Cuando terminen de votar, cierra y cuenta como facultad o consejo.")
                         if st.button("🏁 Cerrar y Contar", use_container_width=True):
                             try:
                                 resultado = dao.cerrar_y_contar(prop_id_sel)
@@ -605,6 +646,14 @@ with tab1:
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"❌ {type(e).__name__}: {e}")
+
+            elif prop.estado == "rechazada":
+                st.markdown("""
+                <div style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:0.8rem;padding:1rem 1.2rem;">
+                    <b>🚫 Propuesta rechazada por el Consejo / Facultad.</b><br>
+                    <span style="font-size:0.85rem;">La propuesta no pasará a votación.</span>
+                </div>
+                """, unsafe_allow_html=True)
 
             elif prop.estado == "cerrada":
                 total_votos = sum(prop.votos.values())
