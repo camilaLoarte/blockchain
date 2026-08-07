@@ -47,7 +47,7 @@ export default function Login() {
           <input
             value={usuario}
             onChange={(e) => setUsuario(e.target.value)}
-            placeholder="ej. camila"
+            placeholder="ej. Jaime"
             required
           />
         </div>
