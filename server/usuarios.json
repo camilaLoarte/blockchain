@@ -1,0 +1,39 @@
+{
+  "usuarios": [
+    {
+      "usuario": "alumno",
+      "contrasena": "1234",
+      "rol": "estudiante",
+      "nombre": "Tais Carreño",
+      "facultad": "Ingeniería en TIs"
+    },
+    {
+      "usuario": "camila",
+      "contrasena": "1234",
+      "rol": "estudiante",
+      "nombre": "Camila Loarte",
+      "facultad": "Ingeniería en TIs"
+    },
+    {
+      "usuario": "profesor",
+      "contrasena": "1234",
+      "rol": "facultad",
+      "nombre": "Facultad de Ingeniería",
+      "facultad": "Ingeniería"
+    },
+    {
+      "usuario": "facadm",
+      "contrasena": "1234",
+      "rol": "facultad",
+      "nombre": "Facultad de Administración",
+      "facultad": "Administración"
+    },
+    {
+      "usuario": "rector",
+      "contrasena": "1234",
+      "rol": "consejo",
+      "nombre": "Consejo Universitario",
+      "facultad": "Rectorado"
+    }
+  ]
+}

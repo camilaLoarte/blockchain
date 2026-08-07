@@ -107,3 +107,73 @@ No hace falta `pip install` nada.
   aparte (simulando una "consulta pública" real).
 - Añadir un segundo escenario donde una propuesta es `RECHAZADA` o no
   alcanza `quorum`.
+
+## 8. Versión web (React + TypeScript + FastAPI)
+
+La lógica de `chaincode.py` se expone como una API REST (FastAPI) que consume
+un frontend en React con TypeScript. La DAO vive como instancia única en
+memoria del servidor (igual que el prototipo).
+
+### Estructura
+
+```
+dao-estudiantil/
+├── server/
+│   ├── api.py            # Endpoints REST (login, propuestas, ledger, arquitectura)
+│   └── usuarios.json     # Credenciales y roles de la demo
+├── frontend/
+│   ├── src/
+│   │   ├── pages/        # Login, Dashboard, Ledger, Arquitectura
+│   │   ├── components/   # Layout (barra superior con navegación)
+│   │   ├── auth.tsx      # Contexto de sesión (token + rol)
+│   │   ├── api.ts        # Cliente axios con token en cada petición
+│   │   └── types.ts      # Tipos compartidos (Propuesta, Bloque, etc.)
+│   ├── vite.config.ts    # Proxy /api → http://127.0.0.1:8000
+│   └── package.json
+```
+
+### Requisitos
+
+- Python 3.9+ con `fastapi` y `uvicorn` (`pip install -r requirements.txt`)
+- Node.js 18+ (el frontend usa Vite)
+
+### Cómo ejecutar
+
+```bash
+# 1. Terminal 1 — backend en http://127.0.0.1:8000
+python -m uvicorn server.api:app --host 127.0.0.1 --port 8000
+
+# 2. Terminal 2 — frontend en http://localhost:5173
+cd frontend
+npm install
+npm run dev
+```
+
+Abrir `http://localhost:5173` y entrar con un usuario de `server/usuarios.json`
+(por defecto todos usan la contraseña `1234`):
+
+| Usuario   | Rol         |
+|-----------|-------------|
+| `camila`  | estudiante  |
+| `alumno`  | estudiante  |
+| `profesor`| facultad    |
+| `facadm`  | facultad    |
+| `rector`  | consejo     |
+
+### API REST
+
+| Método | Ruta                    | Descripción                       |
+|--------|-------------------------|-----------------------------------|
+| POST   | `/api/login`            | Inicia sesión, devuelve token     |
+| GET    | `/api/propuestas`       | Lista propuestas                  |
+| POST   | `/api/propuestas/crear` | Crea propuesta (estudiante)       |
+| POST   | `/api/propuestas/endosar`| Endosa (facultad/consejo)        |
+| POST   | `/api/propuestas/rechazar`| Rechaza (facultad/consejo)      |
+| POST   | `/api/propuestas/abrir` | Abre votación (facultad/consejo)  |
+| POST   | `/api/propuestas/votar` | Vota (estudiante, token pseudónimo)|
+| POST   | `/api/propuestas/cerrar`| Cierra y cuenta                   |
+| GET    | `/api/ledger`           | Cadena de bloques + integridad    |
+| GET    | `/api/arquitectura`     | Permisos, identidades, off-chain  |
+
+Cada petición autenticada se hace con `?token=<token>` (o cabecera). El
+backend valida los permisos por rol mediante el `MSP` del `identity.py`.
