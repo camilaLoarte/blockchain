@@ -469,7 +469,7 @@ st.sidebar.markdown('<div class="sidebar-brand">🪪 Identidad DAO · UIDE</div>
 st.sidebar.markdown('<div class="sidebar-label">🔐 Registro de Identidad (Fabric CA)</div>', unsafe_allow_html=True)
 estudiante_id = st.sidebar.text_input("Usuario / Matrícula", value="2026-IT-001")
 rol_sel = st.sidebar.selectbox("Rol", ["estudiante", "facultad", "consejo"])
-facultad = st.sidebar.selectbox("Organización / Facultad", ["Ingeniería en TIs", "Administración", "Derecho", "Consejo Universitario"])
+facultad = st.sidebar.selectbox("Organización / Facultad", ["Ingeniería en TICs", "Administración", "Derecho", "Consejo Universitario"])
 
 usuario = st.session_state.usuario
 rol_usuario = st.session_state.rol_usuario
